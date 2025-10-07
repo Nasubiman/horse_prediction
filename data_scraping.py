@@ -57,11 +57,10 @@ if __name__ == '__main__':
         results_df = get_horse_results_ajax(horse_id)
         
         if results_df is not None:
-            # --- ▼▼▼ ファイル保存処理の変更点 ▼▼▼ ---
 
             # 1. 保存先のフォルダパスを作成
             # 例: "data/2022105102"
-            target_dir = Path("data") / horse_id
+            target_dir = Path("data/horse") / horse_id
             
             # 2. フォルダが存在しない場合に、フォルダを作成
             # exist_ok=True は、フォルダが既に存在していてもエラーにしないオプション
