@@ -1,82 +1,97 @@
+import pandas as pd
 import requests
-from bs4 import BeautifulSoup
+from io import StringIO
 import time
-import re
-from tqdm import tqdm
+from tqdm import tqdm # tqdmのimportを修正
+from pathlib import Path
 
-def get_horse_ids_for_year(year: int = 2002) -> list:
+def get_horse_results_ajax(horse_id: str) -> pd.DataFrame:
     """
-    指定された年に生まれた馬のIDをnetkeibaの検索結果から全て収集する。
+    netkeibaのAJAXエンドポイントから返されるHTMLを、正しい文字コードで解析する。
+    この関数は変更ありません。
     """
-    print(f"{year}年生まれの馬IDの収集を開始します...")
-    horse_ids = set() # 重複を避けるためにセットを使用
-    page = 1
-    
+    ajax_url = 'https://db.netkeiba.com/horse/ajax_horse_results.html'
+    params = {'id': horse_id}
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+        "Referer": f"https://db.netkeiba.com/horse/{horse_id}/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        "X-Requested-With": "XMLHttpRequest",
     }
-    
-    # /horse/2002... のようなURLから10桁のIDを抽出する正規表現
-    horse_id_pattern = re.compile(r'/horse/(\d{10})')
 
-    while True:
-        # 2002年生まれの馬を100件ずつ表示する検索結果ページのURL
-        # list=100 で100件表示（最大値）
-        list_url = f"https://db.netkeiba.com/?pid=horse_search_list&sort_key=birth_year&sort_type=desc&year_from={year}&year_to={year}&list=100&page={page}"
+    try:
+        response = requests.get(ajax_url, params=params, headers=headers)
+        response.raise_for_status()
+        response.encoding = 'EUC-JP'
+        html_table = response.text
+        df_list = pd.read_html(StringIO(html_table))
+            
+        if df_list:
+            race_results_df = df_list[0]
+            race_results_df['horse_id'] = horse_id
+            return race_results_df
         
-        print(f"\n{page}ページ目をスクレイピング中...\nURL: {list_url}")
-        
-        try:
-            response = requests.get(list_url, headers=headers)
-            response.raise_for_status()
-            response.encoding = 'EUC-JP'
+        # 存在しないIDの場合、df_listが空になり、ここに来る (仕様)
+        return None
             
-            soup = BeautifulSoup(response.text, "lxml")
-            
-            # ページ内の馬へのリンクを全て探す
-            links = soup.find_all('a', href=horse_id_pattern)
-            
-            if not links:
-                print("このページに馬のリンクが見つかりませんでした。収集を終了します。")
-                break
-                
-            found_on_page = 0
-            for link in links:
-                match = horse_id_pattern.search(link['href'])
-                if match:
-                    horse_id = match.group(1)
-                    # IDが指定された年で始まることを確認
-                    if horse_id.startswith(str(year)):
-                        if horse_id not in horse_ids:
-                            horse_ids.add(horse_id)
-                            found_on_page += 1
-            
-            if found_on_page == 0:
-                print("このページに該当する馬のリンクは見つかりましたが、新規IDはありませんでした。収集を終了します。")
-                break
+    except requests.exceptions.RequestException as e:
+        # 存在しないIDにアクセスすると404エラーになるが、
+        # response.raise_for_status()がそれを検知するので、
+        # ここでNoneを返して「存在しなかった」と扱う
+        return None
+    except Exception as e:
+        # print(f"馬ID {horse_id} のデータ取得中に予期せぬエラー: {e}")
+        return None
 
-            print(f"  -> {found_on_page}件の新規IDを発見。 (現在までの合計: {len(horse_ids)})")
-            page += 1
-            time.sleep(1) # サーバー負荷軽減のため1秒待機
-
-        except requests.exceptions.RequestException as e:
-            print(f"エラーが発生しました: {e}")
-            break
-        except Exception as e:
-            print(f"予期せぬエラー: {e}")
-            break
-            
-    return sorted(list(horse_ids))
-
+# --- ▼▼▼ ここからが実行部分 (変更点) ▼▼▼ ---
 if __name__ == '__main__':
-    # 2002年生まれのIDを取得
-    ids_2002 = get_horse_ids_for_year(2002)
     
-    if ids_2002:
-        output_file = 'horse_ids_2002.txt'
-        with open(output_file, 'w') as f:
-            for horse_id in ids_2002:
-                f.write(f"{horse_id}\n")
-        print(f"\n処理完了。合計 {len(ids_2002)} 件の馬IDを {output_file} に保存しました。")
-    else:
-        print("\n馬IDを1件も取得できませんでした。")
+    # 2002年生まれと仮定されるIDの範囲を定義
+    start_id = 2002100001
+    end_id   = 2002109999 # このIDまで試行 (合計9,999件)
+    
+    saved_count = 0
+    total_attempts = (end_id - start_id) + 1
+    
+    columns_to_drop = [
+        '映像',
+        '馬場指数',
+        'ﾀｲﾑ指数',
+        '厩舎ｺﾒﾝﾄ',
+        '備考',
+        '水分量',
+        '賞金'
+    ]
+
+    print(f"2002年産駒の馬ID {start_id} から {end_id} までの総当たり取得を開始します...")
+    print(f"合計 {total_attempts} 件のIDを試行します。")
+    
+    # tqdmを使って、range()で生成されるIDのループにプログレスバーを表示
+    for horse_id_num in tqdm(range(start_id, end_id + 1)):
+        
+        horse_id = str(horse_id_num) # 数値を文字列のIDに変換
+        
+        results_df = get_horse_results_ajax(horse_id)
+        
+        # results_dfがNoneではない (＝馬が存在した) 場合のみ保存処理
+        if results_df is not None:
+            
+            # 不要な列を削除
+            results_df = results_df.drop(columns=columns_to_drop, errors='ignore')
+
+            # 保存先フォルダ (data/horse/2002100570/ など)
+            target_dir = Path("data/horse") / horse_id
+            target_dir.mkdir(parents=True, exist_ok=True)
+            
+            output_path = target_dir / f"{horse_id}_race_results.csv"
+
+            # CSVファイルとして保存
+            results_df.to_csv(output_path, index=False, encoding='utf-8-sig')
+            
+            saved_count += 1
+        
+        # サーバー負荷軽減とIPブロック回避のため、1秒待機 (必須)
+        # time.sleep(1)
+
+    print(f"\n処理が完了しました。")
+    print(f"合計 {total_attempts} 件のIDを試行し、{saved_count} 頭分のデータを正常に保存しました。")
+    print(f"データは 'data/horse' フォルダ内に馬IDごとのフォルダに格納されています。")
