@@ -1,9 +1,9 @@
 import pandas as pd
 import requests
-from io import StringIO
+from io import StringIO         
 import time
-from tqdm import tqdm
-from pathlib import Path # ★ フォルダ操作のためにPathをインポート
+import tqdm
+from pathlib import Path
 
 def get_horse_results_ajax(horse_id: str) -> pd.DataFrame:
     """
@@ -26,8 +26,6 @@ def get_horse_results_ajax(horse_id: str) -> pd.DataFrame:
             
         if df_list:
             race_results_df = df_list[0]
-            # この関数内ではhorse_idの列追加は不要になるが、
-            # 将来的に結合する可能性を考えて残しておいても良い
             race_results_df['horse_id'] = horse_id
             return race_results_df
         
@@ -48,39 +46,46 @@ if __name__ == '__main__':
         '2020104242',
     ]
     
-    # データを保存した頭数をカウントする変数
     saved_count = 0
     
-    print(f"{len(horse_ids_to_scrape)}頭の馬のデータを取得し、個別に保存します...")
+    columns_to_drop = [
+        '映像',
+        '馬場指数',
+        'ﾀｲﾑ指数',
+        '厩舎ｺﾒﾝﾄ',
+        '備考',
+        '水分量',
+        '賞金'
+    ]
+
+    print(f"{len(horse_ids_to_scrape)}頭の馬のデータを取得し、不要な列を削除して個別に保存します...")
     
     for horse_id in tqdm(horse_ids_to_scrape):
         results_df = get_horse_results_ajax(horse_id)
         
         if results_df is not None:
+            
+            # --- ▼▼▼ 変更点2：列を削除する処理を追加 ▼▼▼ ---
+            # errors='ignore' は、リスト内の列名が存在しなくてもエラーにしないためのオプション
+            results_df = results_df.drop(columns=columns_to_drop, errors='ignore')
+            # --- ▲▲▲ 変更点2 ▲▲▲ ---
 
             # 1. 保存先のフォルダパスを作成
-            # 例: "data/2022105102"
+            # フォルダ名を data/horse から data に変更
             target_dir = Path("data/horse") / horse_id
             
             # 2. フォルダが存在しない場合に、フォルダを作成
-            # exist_ok=True は、フォルダが既に存在していてもエラーにしないオプション
             target_dir.mkdir(parents=True, exist_ok=True)
             
             # 3. 保存するファイル名を定義
-            # 例: "data/2022105102/2022105102_race_results.csv"
             output_path = target_dir / f"{horse_id}_race_results.csv"
 
             # 4. CSVファイルとして保存
             results_df.to_csv(output_path, index=False, encoding='utf-8-sig')
             
-            # どの馬のデータを保存したか分かりやすくするためにメッセージをループ内に移動
-            # print(f"  -> {output_path} に保存しました。") # tqdmの表示が崩れるのが気になる場合はコメントアウト
-            
             saved_count += 1
-            
-            # --- ▲▲▲ ファイル保存処理の変更点 ▲▲▲ ---
         
-        # time.sleep(0.1)
+        # time.sleep(1) # sleep時間を1秒に戻すことを推奨します
 
     print(f"\n処理が完了しました。")
     print(f"{len(horse_ids_to_scrape)}頭中、{saved_count}頭分のデータを正常に保存しました。")
