@@ -5,13 +5,14 @@ from io import StringIO
 import time
 from tqdm import tqdm
 from pathlib import Path
-import re # ★ 正規表現ライブラリをインポート
+import re 
 
 def get_race_results_with_ids(race_id: str) -> pd.DataFrame:
     """
-    【改良版】
+    【エラー修正版】
     指定されたrace_idのページを詳細に解析し、
     テキストデータと同時に、リンクから horse_id や jockey_id も抽出する。
+    <tbody> がなくても動作するように修正済み。
     """
     url = f'https://db.netkeiba.com/race/{race_id}/'
     headers = {
@@ -29,49 +30,38 @@ def get_race_results_with_ids(race_id: str) -> pd.DataFrame:
         race_table = soup.find("table", class_="race_table_01")
         
         if not race_table:
-            print(f"エラー: race_id '{race_id}' でテーブルが見つかりません。")
+            # 存在しないレースIDの場合、テーブルが見つからないのでNoneを返す (正常)
             return None
         
-        # --- ここからが詳細な解析処理 ---
-        
-        # 抽出した全行のデータを格納するリスト
         all_rows_data = []
         
-        # テーブルのボディ(tbody)から全行(tr)を取得
-        for row in race_table.find('tbody').find_all('tr'):
+        # <tbody> なしでも動作するよう、tableから直接 tr を探す
+        for row in race_table.find_all('tr'):
             cols = row.find_all('td')
-            if not cols:
-                continue # ヘッダー行などをスキップ
+            if not cols or len(cols) < 16: # ヘッダー行やデータ不足行をスキップ
+                continue 
 
-            # リンクからIDを抽出する正規表現
             horse_id_pattern = re.compile(r'/horse/(\d{10})')
             jockey_id_pattern = re.compile(r'/jockey/result/recent/([\w\d]+)/')
             trainer_id_pattern = re.compile(r'/trainer/result/recent/([\w\d]+)/')
 
             horse_id, jockey_id, trainer_id = None, None, None
 
-            # 馬名 (3番目のセル) から horse_id を抽出
             horse_link = cols[3].find('a', href=horse_id_pattern)
             if horse_link:
                 match = horse_id_pattern.search(horse_link['href'])
-                if match:
-                    horse_id = match.group(1)
+                if match: horse_id = match.group(1)
 
-            # 騎手 (6番目のセル) から jockey_id を抽出
             jockey_link = cols[6].find('a', href=jockey_id_pattern)
             if jockey_link:
                 match = jockey_id_pattern.search(jockey_link['href'])
-                if match:
-                    jockey_id = match.group(1)
+                if match: jockey_id = match.group(1)
 
-            # 調教師 (14番目のセル) から trainer_id を抽出
             trainer_link = cols[14].find('a', href=trainer_id_pattern)
             if trainer_link:
                 match = trainer_id_pattern.search(trainer_link['href'])
-                if match:
-                    trainer_id = match.group(1)
+                if match: trainer_id = match.group(1)
 
-            # データを辞書として格納
             row_data = {
                 '着 順': cols[0].get_text(strip=True),
                 '枠 番': cols[1].get_text(strip=True),
@@ -82,11 +72,10 @@ def get_race_results_with_ids(race_id: str) -> pd.DataFrame:
                 '騎手': cols[6].get_text(strip=True),
                 'タイム': cols[7].get_text(strip=True),
                 '着差': cols[8].get_text(strip=True),
-                # 9: タイム指数, 10: 通過, 11: 上り
                 '単勝': cols[12].get_text(strip=True),
                 '人 気': cols[13].get_text(strip=True),
                 '馬体重': cols[14].get_text(strip=True),
-                '調教師': cols[15].get_text(strip=True), # 調教師名は15番目
+                '調教師': cols[15].get_text(strip=True),
                 'race_id': race_id,
                 'horse_id': horse_id,
                 'jockey_id': jockey_id,
@@ -97,42 +86,65 @@ def get_race_results_with_ids(race_id: str) -> pd.DataFrame:
         if not all_rows_data:
             return None
             
-        # 辞書のリストからDataFrameを作成
         return pd.DataFrame(all_rows_data)
             
     except requests.exceptions.RequestException as e:
-        print(f"race_id {race_id} のデータ取得中にHTTPエラー: {e}")
+        # 404 (Not Found) エラーもここでキャッチされる
+        # 存在しないIDなので、Noneを返してスキップする (正常)
         return None
     except Exception as e:
         print(f"race_id {race_id} のデータ取得中に予期せぬエラー: {e}")
         return None
 
-# --- 実行部分 (使用例) ---
+# --- ▼▼▼ ここからが実行部分 (総当たりロジック) ▼▼▼ ---
 if __name__ == '__main__':
     
-    race_ids_to_scrape = [
-        '202406050911', # ユーザーが例示したホープフルS
-        '202505021211', # 東京優駿(GI)
-    ]
+    YEAR = "2000"
     
-    print(f"{len(race_ids_to_scrape)} 件のレースデータを詳細解析します...")
+    # JRA競馬場コード (01〜10)
+    TRACK_CODES = [f"{i:02d}" for i in range(1, 11)]
+    # 開催回 (01〜05) - 5回開催は稀だが、安全マージン
+    SESSION_CODES = [f"{i:02d}" for i in range(1, 6)]
+    # 開催日 (01〜12) - 12日開催は稀だが、安全マージン
+    DAY_CODES = [f"{i:02d}" for i in range(1, 13)]
+    # レース番号 (01〜12)
+    RACE_NUMBERS = [f"{i:02d}" for i in range(1, 13)]
 
-    base_dir = Path("data") / "race_with_ids" # 保存先フォルダを別名に変更
+    # 全試行回数
+    total_attempts = len(TRACK_CODES) * len(SESSION_CODES) * len(DAY_CODES) * len(RACE_NUMBERS)
+    print(f"{YEAR}年のレースデータを総当たりで取得します。")
+    print(f"競馬場: {len(TRACK_CODES)}件 / 開催回: {len(SESSION_CODES)}件 / 開催日: {len(DAY_CODES)}件 / レース: {len(RACE_NUMBERS)}件")
+    print(f"合計 {total_attempts} パターンのIDを試行します。")
+    print(f"推定所要時間: 約 {total_attempts / 3600:.1f} 時間 (1秒/件 の場合)")
+    
+    # 保存先のベースフォルダを指定 (ご要望の 'race/2002/')
+    base_dir = Path("data/race") / YEAR
     base_dir.mkdir(parents=True, exist_ok=True)
     
     saved_count = 0
-
-    for race_id in tqdm(race_ids_to_scrape):
-        # ★改良版の関数を呼び出す
-        results_df = get_race_results_with_ids(race_id) 
-        
-        if results_df is not None:
-            output_path = base_dir / f"race_{race_id}_results.csv"
-            results_df.to_csv(output_path, index=False, encoding='utf-8-sig')
-            saved_count += 1
-        
-        time.sleep(1)
+    
+    # tqdmでネストされたループの進捗を表示
+    with tqdm(total=total_attempts) as pbar:
+        for track in TRACK_CODES:
+            for session in SESSION_CODES:
+                for day in DAY_CODES:
+                    for race_num in RACE_NUMBERS:
+                        
+                        race_id = f"{YEAR}{track}{session}{day}{race_num}"
+                        pbar.set_description(f"Check: {race_id}")
+                        
+                        results_df = get_race_results_with_ids(race_id)
+                        
+                        # データを取得できた (レースが存在した) 場合のみ保存
+                        if results_df is not None:
+                            output_path = base_dir / f"race_{race_id}_results.csv"
+                            results_df.to_csv(output_path, index=False, encoding='utf-8-sig')
+                            saved_count += 1
+                        
+                        # 1秒待機 (必須)
+                        # time.sleep(1)
+                        pbar.update(1) # プログレスバーを1進める
 
     print(f"\n処理が完了しました。")
-    print(f"{len(race_ids_to_scrape)}件中、{saved_count}件のデータを正常に保存しました。")
+    print(f"{total_attempts}件のIDを試行し、{saved_count}件のレースデータを正常に保存しました。")
     print(f"データは '{base_dir}' フォルダ内に格納されています。")
