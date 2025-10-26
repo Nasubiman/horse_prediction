@@ -99,8 +99,10 @@ def get_race_results_with_ids(race_id: str) -> pd.DataFrame:
 # --- ▼▼▼ ここからが実行部分 (総当たりロジック) ▼▼▼ ---
 if __name__ == '__main__':
     
-    YEAR = "2000"
-    
+    # --- 変更点 (ここから) ---
+    YEARS_TO_SCRAPE = range(2000, 2002) 
+    # --- 変更点 (ここまで) ---
+
     # JRA競馬場コード (01〜10)
     TRACK_CODES = [f"{i:02d}" for i in range(1, 11)]
     # 開催回 (01〜05) - 5回開催は稀だが、安全マージン
@@ -110,41 +112,52 @@ if __name__ == '__main__':
     # レース番号 (01〜12)
     RACE_NUMBERS = [f"{i:02d}" for i in range(1, 13)]
 
-    # 全試行回数
-    total_attempts = len(TRACK_CODES) * len(SESSION_CODES) * len(DAY_CODES) * len(RACE_NUMBERS)
-    print(f"{YEAR}年のレースデータを総当たりで取得します。")
-    print(f"競馬場: {len(TRACK_CODES)}件 / 開催回: {len(SESSION_CODES)}件 / 開催日: {len(DAY_CODES)}件 / レース: {len(RACE_NUMBERS)}件")
-    print(f"合計 {total_attempts} パターンのIDを試行します。")
-    print(f"推定所要時間: 約 {total_attempts / 3600:.1f} 時間 (1秒/件 の場合)")
+    # 全試行回数 (1年あたり)
+    total_attempts_per_year = len(TRACK_CODES) * len(SESSION_CODES) * len(DAY_CODES) * len(RACE_NUMBERS)
     
-    # 保存先のベースフォルダを指定 (ご要望の 'race/2002/')
-    base_dir = Path("data/race") / YEAR
-    base_dir.mkdir(parents=True, exist_ok=True)
+    # --- 変更点 (ここから) ---
+    # 年ごとのループを追加
+    for year_int in YEARS_TO_SCRAPE:
+        YEAR = str(year_int)
+    # --- 変更点 (ここまで) ---
     
-    saved_count = 0
-    
-    # tqdmでネストされたループの進捗を表示
-    with tqdm(total=total_attempts) as pbar:
-        for track in TRACK_CODES:
-            for session in SESSION_CODES:
-                for day in DAY_CODES:
-                    for race_num in RACE_NUMBERS:
-                        
-                        race_id = f"{YEAR}{track}{session}{day}{race_num}"
-                        pbar.set_description(f"Check: {race_id}")
-                        
-                        results_df = get_race_results_with_ids(race_id)
-                        
-                        # データを取得できた (レースが存在した) 場合のみ保存
-                        if results_df is not None:
-                            output_path = base_dir / f"race_{race_id}_results.csv"
-                            results_df.to_csv(output_path, index=False, encoding='utf-8-sig')
-                            saved_count += 1
-                        
-                        # 1秒待機 (必須)
-                        # time.sleep(1)
-                        pbar.update(1) # プログレスバーを1進める
+        print("-" * 50)
+        print(f"{YEAR}年のレースデータを総当たりで取得します。")
+        print(f"競馬場: {len(TRACK_CODES)}件 / 開催回: {len(SESSION_CODES)}件 / 開催日: {len(DAY_CODES)}件 / レース: {len(RACE_NUMBERS)}件")
+        print(f"合計 {total_attempts_per_year} パターンのIDを試行します。")
+        print(f"推定所要時間: 約 {total_attempts_per_year / 3600:.1f} 時間 (1秒/件 の場合)")
+        
+        # 保存先のベースフォルダを指定
+        base_dir = Path("data/race") / YEAR
+        base_dir.mkdir(parents=True, exist_ok=True)
+        
+        saved_count = 0
+        
+        # tqdmでネストされたループの進捗を表示
+        with tqdm(total=total_attempts_per_year, desc=f"{YEAR}年") as pbar:
+            for track in TRACK_CODES:
+                for session in SESSION_CODES:
+                    for day in DAY_CODES:
+                        for race_num in RACE_NUMBERS:
+                            
+                            race_id = f"{YEAR}{track}{session}{day}{race_num}"
+                            pbar.set_description(f"Check: {race_id}")
+                            
+                            results_df = get_race_results_with_ids(race_id)
+                            
+                            # データを取得できた (レースが存在した) 場合のみ保存
+                            if results_df is not None:
+                                output_path = base_dir / f"race_{race_id}_results.csv"
+                                results_df.to_csv(output_path, index=False, encoding='utf-8-sig')
+                                saved_count += 1
+                            
+                            # 1秒待機 (必須)
+                            time.sleep(1)
+                            pbar.update(1) # プログレスバーを1進める
 
-    print(f"\n処理が完了しました。")
-    print(f"{total_attempts}件のIDを試行し、{saved_count}件のレースデータを正常に保存しました。")
-    print(f"データは '{base_dir}' フォルダ内に格納されています。")
+        print(f"\n{YEAR}年の処理が完了しました。")
+        print(f"{total_attempts_per_year}件のIDを試行し、{saved_count}件のレースデータを正常に保存しました。")
+        print(f"データは '{base_dir}' フォルダ内に格納されています。")
+
+    print("-" * 50)
+    print("指定された全ての年の処理が完了しました。")
