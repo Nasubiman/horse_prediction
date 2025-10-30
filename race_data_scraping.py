@@ -15,8 +15,21 @@ def get_race_results_with_ids(race_id: str) -> pd.DataFrame:
     <tbody> がなくても動作するように修正済み。
     """
     url = f'https://db.netkeiba.com/race/{race_id}/'
+
+#     USER_AGENTS = [
+#     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+#     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.15",
+#     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0"
+# ]
+
+#     # リクエストのたびに、リストからランダムに1つ選ぶ
+#     random_ua = random.choice(USER_AGENTS)
+
+#     headers = {
+#         "User-Agent": random_ua
+#     }
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0"
     }
 
     try:
@@ -152,7 +165,7 @@ if __name__ == '__main__':
                                 saved_count += 1
                             
                             # 1秒待機 (必須)
-                            time.sleep(1)
+                            time.sleep(1.2)
                             pbar.update(1) # プログレスバーを1進める
 
         print(f"\n{YEAR}年の処理が完了しました。")
