@@ -113,7 +113,7 @@ def get_race_results_with_ids(race_id: str) -> pd.DataFrame:
 if __name__ == '__main__':
     
     # --- 変更点 (ここから) ---
-    YEARS_TO_SCRAPE = range(2000, 2002) 
+    YEARS_TO_SCRAPE = range(2000, 2003) 
     # --- 変更点 (ここまで) ---
 
     # JRA競馬場コード (01〜10)
@@ -141,7 +141,7 @@ if __name__ == '__main__':
         print(f"推定所要時間: 約 {total_attempts_per_year / 3600:.1f} 時間 (1秒/件 の場合)")
         
         # 保存先のベースフォルダを指定
-        base_dir = Path("data/race") / YEAR
+        base_dir = Path("data/race")
         base_dir.mkdir(parents=True, exist_ok=True)
         
         saved_count = 0
@@ -165,7 +165,7 @@ if __name__ == '__main__':
                                 saved_count += 1
                             
                             # 1秒待機 (必須)
-                            time.sleep(1.2)
+                            time.sleep(1.5)
                             pbar.update(1) # プログレスバーを1進める
 
         print(f"\n{YEAR}年の処理が完了しました。")
