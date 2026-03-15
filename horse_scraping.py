@@ -90,7 +90,7 @@ if __name__ == '__main__':
             saved_count += 1
         
         # サーバー負荷軽減とIPブロック回避のため、1秒待機 (必須)
-        # time.sleep(1)
+        time.sleep(1.5)
 
     print(f"\n処理が完了しました。")
     print(f"合計 {total_attempts} 件のIDを試行し、{saved_count} 頭分のデータを正常に保存しました。")
