@@ -46,8 +46,8 @@ def get_horse_results_ajax(horse_id: str) -> pd.DataFrame:
 if __name__ == '__main__':
     
     # 2002年生まれと仮定されるIDの範囲を定義
-    start_id = 2002100001
-    end_id   = 2002109999 # このIDまで試行 (合計9,999件)
+    start_id = 2003100001
+    end_id   = 2003109999 # このIDまで試行 (合計9,999件)
     
     saved_count = 0
     total_attempts = (end_id - start_id) + 1
